@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.0/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="index.js"></script>
+    <script>
+        var sock = new SockJS("http://localhost:8081/ws-stomp");
+        var ws = Stomp.over(sock);
+        var reconnect = 0;
+        var user = localStorage.getItem('wschat.sender');
+        var room = localStorage.getItem('wschat.roomId');
+        var message = '';
+        var messages = [];
+
+        console.log('user:'+user);
+        console.log('room:'+room);
+        
+        function connect() {
+            ws.connect({}, function(frame){
+                ws.subscribe("/sub/chat/room/"+room, function(response){
+                    var recv = JSON.parse(response.body);
+                    this.recvMsg(recv);
+                });
+                ws.send("/pub/chat/message", {}, JSON.stringify({type:'ENTER', roomId:room, sender:user}));            
+            }, function(error){
+                if(reconnect++ <= 5){
+                    setTimeout(function(){
+                        console.log("reconnect");
+                        sock = new SockJS("http://localhost:8081/ws-stomp");
+                        ws = stomp.over(sock);
+                        connect();
+                    }, 10*3000);
+                }
+            });
+        }
+
+        function sendMessage() {
+            this.message = document.getElementById("message").value;
+            console.log(this.message);
+
+            ws.send("/pub/chat/message", {}, JSON.stringify({type:'TALK', roomId:this.room, sender:this.user, message:this.message}));
+            this.message = '';
+        }
+
+        function recvMsg(msg) {
+            this.messages.unshift({"type":msg.type,"sender":msg.type=='ENTER'?'[알림]':msg.sender,"message":msg.message});
+            
+            var html = '<p>'+ msg.sender + ': '+ msg.message + '</p>';
+
+            document.getElementById('chat').innerHTML += html;
+
+        }
+
+        function findRoom() {
+            axios.get('/chat/room/'+this.room).then(response => { this.room = response.data; });
+        }
+
+        connect();
+
+    </script>
+</head>
+<body>
+    <div id="chat" style="width: 300px; height: 300px; border: 1px solid #000;"></div>
+    <input type="text" id="message"><button id="btnSend" onclick="sendMessage();">전송</button>
+</body>
+</html>
